@@ -12,6 +12,7 @@ import { parseBatteryDump } from './helpers/battery/index.js'
 import adbScanner from './helpers/scanner/index.js'
 import { ADBUploader } from './helpers/uploader/index.js'
 import { electronAPI } from '@electron-toolkit/preload'
+import mdnsDiscovery from './helpers/mdns/index.js'
 
 const exec = util.promisify(_exec)
 
@@ -377,16 +378,49 @@ async function getDeviceList() {
   return value
 }
 
-function init() {
+async function init() {
   const bin = appStore.get('common.adbPath') || adbPath
 
   client = Adb.createClient({
     bin,
   })
+
+  // 启动 mDNS 自动发现
+  const mdnsEnabled = await mdnsDiscovery.start()
+  
+  if (mdnsEnabled) {
+    console.log('mDNS auto-discovery started successfully')
+    
+    // 监听 mDNS 发现的设备
+    mdnsDiscovery.on(async (event) => {
+      if (event.type === 'devices-found' && event.newDevices.length > 0) {
+        console.log('New devices found via mDNS:', event.newDevices)
+        
+        // 自动连接新发现的设备
+        for (const device of event.newDevices) {
+          try {
+            if (device.address) {
+              console.log(`Auto-connecting to ${device.name} at ${device.address}...`)
+              await connect(device.ip, device.port)
+              console.log(`Successfully connected to ${device.name}`)
+            }
+          }
+          catch (error) {
+            console.error(`Failed to auto-connect to ${device.name}:`, error.message)
+          }
+        }
+      }
+    })
+  }
+  else {
+    console.warn('mDNS auto-discovery failed to start')
+  }
 }
 
 function killProcesses() {
   processManager.kill()
+  // 停止 mDNS 自动发现
+  mdnsDiscovery.stop()
 }
 
 export default {
@@ -415,4 +449,10 @@ export default {
   waitForDevice,
   getSerialNo,
   killProcesses,
+  // mDNS 相关
+  mdnsDiscovery,
+  startMdnsDiscovery: () => mdnsDiscovery.start(),
+  stopMdnsDiscovery: () => mdnsDiscovery.stop(),
+  getMdnsDevices: () => mdnsDiscovery.getDiscoveredDevices(),
+  setMdnsScanInterval: (ms) => mdnsDiscovery.setScanInterval(ms),
 }
