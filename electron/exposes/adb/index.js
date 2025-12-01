@@ -396,19 +396,25 @@ async function init() {
       if (event.type === 'devices-found' && event.newDevices.length > 0) {
         console.log('New devices found via mDNS:', event.newDevices)
         
-        // 自动连接新发现的设备
-        for (const device of event.newDevices) {
+        // 自动连接新发现的设备（并行执行，避免阻塞）
+        event.newDevices.forEach(async (device) => {
           try {
             if (device.address) {
-              console.log(`Auto-connecting to ${device.name} at ${device.address}...`)
-              await connect(device.ip, device.port)
-              console.log(`Successfully connected to ${device.name}`)
+              console.log(`[mDNS] Auto-connecting to ${device.name} at ${device.address}...`)
+              // 不等待连接结果，让它们并行执行
+              connect(device.ip, device.port)
+                .then(() => {
+                  console.log(`[mDNS] Successfully connected to ${device.name} at ${device.address}`)
+                })
+                .catch((error) => {
+                  console.warn(`[mDNS] Failed to auto-connect to ${device.name} at ${device.address}:`, error.message)
+                })
             }
           }
           catch (error) {
-            console.error(`Failed to auto-connect to ${device.name}:`, error.message)
+            console.error(`[mDNS] Error processing device ${device.name}:`, error.message)
           }
-        }
+        })
       }
     })
   }
