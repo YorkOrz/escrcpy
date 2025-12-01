@@ -119,27 +119,40 @@ class MdnsDiscovery {
         continue
       }
 
-      // 解析格式：name\ttype\taddress
+      // 解析格式：name [optional (N)] type address
+      // 例如: adb-32214939-sx2sW3 (2) _adb-tls-connect._tcp   192.168.2.4:32859
       const parts = trimmed.split(/\s+/)
       if (parts.length >= 3) {
+        // 设备名总是第一个
         const name = parts[0]
-        const type = parts[1]
-        const address = parts[2]
-
-        // 只关注连接服务（已配对的设备）
-        if (type.includes('_adb-tls-connect')) {
-          // 解析 IP 和端口
-          const [ip, port] = address.split(':')
-          
-          devices.push({
-            name,
-            type,
-            ip,
-            port: port ? parseInt(port) : null,
-            address,
-            discoveredAt: new Date().toISOString(),
-          })
+        
+        // 查找类型字段（包含 _adb-tls-connect 的字段）
+        const typeIndex = parts.findIndex(p => p.includes('_adb-tls-connect'))
+        if (typeIndex === -1) {
+          continue
         }
+        const type = parts[typeIndex]
+        
+        // 查找地址字段（IP:port 格式）
+        const addressIndex = parts.findIndex(p => /\d+\.\d+\.\d+\.\d+:\d+/.test(p))
+        if (addressIndex === -1) {
+          continue
+        }
+        const address = parts[addressIndex]
+
+        // 解析 IP 和端口
+        const [deviceIp, port] = address.split(':')
+        
+        console.log(`Parsed mDNS device: name=${name}, type=${type}, address=${address}`)
+        
+        devices.push({
+          name,
+          type,
+          ip: deviceIp,
+          port: port ? parseInt(port) : null,
+          address,
+          discoveredAt: new Date().toISOString(),
+        })
       }
     }
 
